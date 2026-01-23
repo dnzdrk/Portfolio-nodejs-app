@@ -73,8 +73,8 @@ jobs:
             import json
 
 
-            def verify_container_running():
-                result = subprocess.run(f"docker ps --filter name=simple-node-api --format '{{{{.Names}}}} {{{{.Status}}}}'",
+            def verify_container_running(name="simple-node-api"):
+                result = subprocess.run(f"docker ps --filter name={name} --format '{{{{.Names}}}} {{{{.Status}}}}'",
                                     shell=True,
                                     capture_output=True,
                                     text=True
@@ -82,7 +82,7 @@ jobs:
 
                 print(result.stdout)
 
-                if "simple-node-api" in result.stdout and "Up" in result.stdout:
+                if f"{name}" in result.stdout and "Up" in result.stdout:
                     print("Container is currently running.")
                     return True
                 
@@ -91,7 +91,7 @@ jobs:
                     return False
                 
 
-            def stop_and_remove_container():
+            def stop_and_rename_container():
                 stop_container = subprocess.run("docker stop simple-node-api",
                                                 shell=True,
                                                 capture_output=True,
@@ -99,21 +99,38 @@ jobs:
                                             )
                 if stop_container.returncode == 0:
                     print("Container stopped successfully.")
-                    remove_container = subprocess.run("docker rm -f simple-node-api",
-                                                shell=True,
-                                                capture_output=True,
-                                                text=True
+                    
+                    rename_contaner = subprocess.run("docker rename simple-node-api simple-node-api-old",
+                                                    shell=True,
+                                                    capture_output=True,
+                                                    text=True
                                                 )
-                    if remove_container.returncode == 0:
-                        print("Container removed successfully.")
+                    if rename_contaner.returncode == 0:
+                        print("Container renamed successfully.")
                         return True
+                    
                     else:
-                        print("Failed to remove the container.")
+                        print("Failed to rename the container.")
                         return False
                 
                 else: 
                     print("Failed to stop the container.")
                     return False
+                
+
+            def remove_container(name="simple-node-api"):
+                remove_result = subprocess.run(f"docker rm -f {name}",
+                                                shell=True,
+                                                capture_output=True,
+                                                text=True
+                                                )
+                if remove_result.returncode == 0:
+                    print("Container removed successfully.")
+                    return True
+                else:
+                    print("Failed to remove the container.")
+                    return False
+                
                 
             def pull_container():
                 pull_image = subprocess.run("docker pull ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
@@ -129,7 +146,7 @@ jobs:
                     return False
                 
             def run_container():
-                run_container = subprocess.run("docker run -d -p 4000:4000 --name simple-node-api ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
+                run_results = subprocess.run(f"docker run -d -p 4000:4000 --name simple-node-api ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
                                                     shell=True,
                                                     capture_output=True,
                                                     text=True
@@ -141,7 +158,7 @@ jobs:
                                     capture_output=True,
                                     text=True
                                 )
-                if "simple-node-api" in check_running.stdout and "Up" in check_running.stdout:
+                if f"simple-node-api" in check_running.stdout and "Up" in check_running.stdout:
                     print("Container started successfully.")
                     print(f"{check_running.stdout}")
                     return True
@@ -153,28 +170,94 @@ jobs:
 
             def health_check():
                 time.sleep(10)  # Wait for a few seconds to allow the container to initialize
-                health_check = subprocess.run("curl -f http://localhost:4000/health",
+
+                for attempt in range(3):
+                    print(f"Health check attempt {attempt + 1}...")
+                    health_result = subprocess.run("curl -f http://localhost:4000/health",
+                                                            shell=True,
+                                                            capture_output=True,
+                                                            text=True
+                                                        )
+                    if health_result.returncode == 0:
+                        try:
+                            health_data = json.loads(health_result.stdout)
+                            print(f"Health Check Response: {health_data}")
+                            if health_data.get("status") == "healthy":
+                                print("Health check passed.")
+                                return True
+                            else:
+                                print("Health check status is not healthy.")
+                                
+                        except json.JSONDecodeError:
+                            print("Failed to parse health check response as JSON.")
+                            
+                        
+                    else:
+                        print("Health check failed.")
+                
+                    time.sleep(2)
+                
+                print("All health check attempts failed.")
+                return False
+
+
+            def start_container(name="simple-node-api"):
+                for attempt in range(3):
+                    print(f"Attempting to start container, attempt {attempt + 1}...")
+                    start_result = subprocess.run(f"docker start {name}",
                                                         shell=True,
                                                         capture_output=True,
                                                         text=True
                                                     )
-                if health_check.returncode == 0:
-                    try:
-                        health_data = json.loads(health_check.stdout)
-                        print(f"Health Check Response: {health_data}")
-                        if health_data.get("status") == "healthy":
-                            print("Health check passed.")
-                            return True
-                        else:
-                            print("Health check status is not healthy.")
-                            return False
-                    except json.JSONDecodeError:
-                        print("Failed to parse health check response as JSON.")
-                        return False
                     
-                else:
-                    print("Health check failed.")
+                    running = verify_container_running(name=name)
+                    if running:
+                        print(f"Container is running after {attempt + 1} start attempt.")
+                        return True
+                    else:
+                        print(f"Container is not running after {attempt + 1} start attempt.")
+                
+                print(f"Failed to start the container after 3 attempts.")
+                return False
+
+
+            def rollback():
+                print("Initiating rollback.")
+
+                running_new = verify_container_running(name="simple-node-api")
+                if running_new:
+                    remove_new_container = remove_container(name="simple-node-api")
+                    if not remove_new_container:
+                        print("Rollback failed: Could not remove the new container.")
+                        return False
+                
+                rename_old_container = subprocess.run("docker rename simple-node-api-old simple-node-api",
+                                                    shell=True,
+                                                    capture_output=True,
+                                                    text=True
+                                                )
+                if rename_old_container.returncode == 0:
+                    print("Rollback successful: Old container renamed back to original name.")
+                    print(f"Attempting to restart old container.")
+                    running = start_container(name="simple-node-api")
+                    if running:
+                        print("Old container is running again.")
+                        return True
+                    
+                    time.sleep(2)
+                    
+                    print("Rollback failed: Could not restart the old container.")
                     return False
+                        
+                else:
+                    print("Could not rename the old container. Trying to run it directly.")
+                    running_old = start_container(name="simple-node-api-old")
+                    if running_old:
+                        print("Old container is running again.")
+                        return True
+                    else:
+                        print("Rollback failed: Could not run the old container.")
+                        return False
 
 
             def main():
@@ -182,8 +265,9 @@ jobs:
                 container_running = verify_container_running()
 
                 if container_running:
-                    stopped_and_removed = stop_and_remove_container()
-                    if not stopped_and_removed:
+                    stopped_and_renamed = stop_and_rename_container()
+                    if not stopped_and_renamed:
+                        print("Failed to stop and rename the running container.")
                         exit(1)
                         
 
@@ -198,16 +282,29 @@ jobs:
                     step_success = step_func()
                     if not step_success:
                         print(f"Step: {step_name} failed.")
+                        rollback_success = rollback()
+                        if not rollback_success:
+                            print("Rollback failed.")
+                        else:
+                            print("Rollback performed completed successfully.")
                         exit(1)
+
                     print(f"Step: {step_name} completed successfully.")
+                
+                remove_old = remove_container(name="simple-node-api-old")
+                
+                if not remove_old:
+                    print("Warning: Could not remove old container.")
+                else:
+                    print("Old container removed successfully.")
 
                 print("Deployment completed successfully.")
                 exit(0)
                         
 
             main()
-            
+                        
             EOF
-            
+
             
     
