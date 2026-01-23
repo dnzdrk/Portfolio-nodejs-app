@@ -55,7 +55,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:latest
 
-  deploy:
+  deploy-and-health-check:
     needs: build-docker-image
     runs-on: ubuntu-latest
 
@@ -70,6 +70,8 @@ jobs:
             python3 << EOF
             import subprocess
             import os 
+            import time
+            import json
 
             result = subprocess.run(f"docker ps --filter name=simple-node-api --format '{{{{.Names}}}} {{{{.Status}}}}'",
                                     shell=True,
@@ -115,7 +117,30 @@ jobs:
                             
                             if "simple-node-api" in check_result.stdout and "Up" in check_result.stdout:
                                 print("Container started successfully.")
-                                exit(0)
+                                print(f"{check_result.stdout}")
+                                time.sleep(10)
+                                health_check = subprocess.run("curl -f http://localhost:4000/health",
+                                                              shell=True,
+                                                              capture_output=True,
+                                                              text=True
+                                                            )
+                                if health_check.returncode == 0:
+                                    try:
+                                        health_data = json.loads(health_check.stdout)
+                                        print(f"Health Check Response: {health_data}")
+                                        if health_data.get("status") == "healthy":
+                                            print("Health check passed. Deployment successful.")
+                                            exit(0)
+                                        else:
+                                            print("Health check status is not healthy.")
+                                            exit(1)
+                                    except json.JSONDecodeError:
+                                        print("Failed to parse health check response as JSON.")
+                                        exit(1)
+                                    
+                                else:
+                                    print("Health check failed.")
+                                    exit(1)
                               
                             else:
                                 print("Failed to start the container.")
@@ -157,4 +182,6 @@ jobs:
                         print("Failed to start the container.")
                         exit(1) 
             EOF
+
+            
     
