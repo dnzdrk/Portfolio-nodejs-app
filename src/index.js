@@ -20,6 +20,17 @@ app.use(express.json());
 app.use(express.urlencoded({extended:false}));
 app.use(morgan("dev"));
 app.use(cors());
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        service: 'todo-api'
+    });
+});
+
 app.use('/todos',todoRouter);
 app.use('/api-docs',swaggerUI.serve,swaggerUI.setup(docs));
 
