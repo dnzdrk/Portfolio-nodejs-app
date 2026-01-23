@@ -68,25 +68,34 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             python3 << EOF
-            import subprocess
-            import os 
+            import subprocess 
             import time
             import json
 
-            result = subprocess.run(f"docker ps --filter name=simple-node-api --format '{{{{.Names}}}} {{{{.Status}}}}'",
+
+            def verify_container_running():
+                result = subprocess.run(f"docker ps --filter name=simple-node-api --format '{{{{.Names}}}} {{{{.Status}}}}'",
                                     shell=True,
                                     capture_output=True,
                                     text=True
                                 )
 
-            print(result.stdout)
+                print(result.stdout)
 
-            if "simple-node-api" in result.stdout and "Up" in result.stdout:
-                print("Container is currently running.")
+                if "simple-node-api" in result.stdout and "Up" in result.stdout:
+                    print("Container is currently running.")
+                    return True
+                
+                else:
+                    print("Container is not running.")
+                    return False
+                
+
+            def stop_and_remove_container():
                 stop_container = subprocess.run("docker stop simple-node-api",
-                                              shell=True,
-                                              capture_output=True,
-                                              text=True
+                                                shell=True,
+                                                capture_output=True,
+                                                text=True
                                             )
                 if stop_container.returncode == 0:
                     print("Container stopped successfully.")
@@ -97,114 +106,108 @@ jobs:
                                                 )
                     if remove_container.returncode == 0:
                         print("Container removed successfully.")
-                        pull_image = subprocess.run("docker pull ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
+                        return True
+                    else:
+                        print("Failed to remove the container.")
+                        return False
+                
+                else: 
+                    print("Failed to stop the container.")
+                    return False
+                
+            def pull_container():
+                pull_image = subprocess.run("docker pull ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
                                                     shell=True,
                                                     capture_output=True,
                                                     text=True
                                                 )
-                        if pull_image.returncode == 0:
-                            print("Image pulled successfully.")
-                            run_container = subprocess.run("docker run -d -p 4000:4000 --name simple-node-api ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
+                if pull_image.returncode == 0:
+                    print("Image pulled successfully.")
+                    return True
+                else:
+                    print("Failed to pull the image.")
+                    return False
+                
+            def run_container():
+                run_container = subprocess.run("docker run -d -p 4000:4000 --name simple-node-api ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
+                                                    shell=True,
+                                                    capture_output=True,
+                                                    text=True
+                                                )
+                
+                time.sleep(2)
+                check_running = subprocess.run(f"docker ps --filter name=simple-node-api --format '{{{{.Names}}}} {{{{.Status}}}}'",
+                                    shell=True,
+                                    capture_output=True,
+                                    text=True
+                                )
+                if "simple-node-api" in check_running.stdout and "Up" in check_running.stdout:
+                    print("Container started successfully.")
+                    print(f"{check_running.stdout}")
+                    return True
+                else:
+                    print("Failed to start the container.")
+                    print(f"{check_running.stdout}")
+                    return False
+                
+
+            def health_check():
+                time.sleep(10)  # Wait for a few seconds to allow the container to initialize
+                health_check = subprocess.run("curl -f http://localhost:4000/health",
                                                         shell=True,
                                                         capture_output=True,
                                                         text=True
                                                     )
-                            check_result = subprocess.run(f"docker ps --filter name=simple-node-api --format '{{{{.Names}}}} {{{{.Status}}}}'",
-                                    shell=True,
-                                    capture_output=True,
-                                    text=True
-                                )
-                            
-                            if "simple-node-api" in check_result.stdout and "Up" in check_result.stdout:
-                                print("Container started successfully.")
-                                print(f"{check_result.stdout}")
-                                time.sleep(10)
-                                health_check = subprocess.run("curl -f http://localhost:4000/health",
-                                                              shell=True,
-                                                              capture_output=True,
-                                                              text=True
-                                                            )
-                                if health_check.returncode == 0:
-                                    try:
-                                        health_data = json.loads(health_check.stdout)
-                                        print(f"Health Check Response: {health_data}")
-                                        if health_data.get("status") == "healthy":
-                                            print("Health check passed. Deployment successful.")
-                                            exit(0)
-                                        else:
-                                            print("Health check status is not healthy.")
-                                            exit(1)
-                                    except json.JSONDecodeError:
-                                        print("Failed to parse health check response as JSON.")
-                                        exit(1)
-                                    
-                                else:
-                                    print("Health check failed.")
-                                    exit(1)
-                              
-                            else:
-                                print("Failed to start the container.")
-                                exit(1)
-
-                    else:
-                        print("Failed to remove the container.")
-                        exit(1)
-                
-                else: 
-                    print("Failed to stop the container.")
-                    exit(1)
-                  
-            else:
-                print("Container is not running. Proceeding to pull and run the container.")
-                pull_image = subprocess.run("docker pull ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
-                                            shell=True,
-                                            capture_output=True,
-                                            text=True
-                                        )
-                if pull_image.returncode == 0:
-                    print("Image pulled successfully.")
-                    run_container = subprocess.run("docker run -d -p 4000:4000 --name simple-node-api ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
-                                                shell=True,
-                                                capture_output=True,
-                                                text=True
-                                            )
-                    check_result = subprocess.run(f"docker ps --filter name=simple-node-api --format '{{{{.Names}}}} {{{{.Status}}}}'",
-                                    shell=True,
-                                    capture_output=True,
-                                    text=True
-                                )
-                    
-                    if "simple-node-api" in check_result.stdout and "Up" in check_result.stdout:
-                        print("Container started successfully.")
-                        print(f"{check_result.stdout}")
-                        time.sleep(10)
-                        health_check = subprocess.run("curl -f http://localhost:4000/health",
-                                                      shell=True,
-                                                      capture_output=True,
-                                                      text=True
-                                                    )
-                        if health_check.returncode == 0:
-                            try:
-                                health_data = json.loads(health_check.stdout)
-                                print(f"Health Check Response: {health_data}")
-                                if health_data.get("status") == "healthy":
-                                    print("Health check passed. Deployment successful.")
-                                    exit(0)
-                                else:
-                                    print("Health check status is not healthy.")
-                                    exit(1)
-                            except json.JSONDecodeError:
-                                print("Failed to parse health check response as JSON.")
-                                exit(1)
-                            
+                if health_check.returncode == 0:
+                    try:
+                        health_data = json.loads(health_check.stdout)
+                        print(f"Health Check Response: {health_data}")
+                        if health_data.get("status") == "healthy":
+                            print("Health check passed.")
+                            return True
                         else:
-                            print("Health check failed.")
-                            exit(1)
-            
-                    else:
-                        print("Failed to start the container.")
-                        exit(1) 
-            EOF
+                            print("Health check status is not healthy.")
+                            return False
+                    except json.JSONDecodeError:
+                        print("Failed to parse health check response as JSON.")
+                        return False
+                    
+                else:
+                    print("Health check failed.")
+                    return False
 
+
+            def main():
+                
+                container_running = verify_container_running()
+
+                if container_running:
+                    stopped_and_removed = stop_and_remove_container()
+                    if not stopped_and_removed:
+                        exit(1)
+                        
+
+                steps = [
+                    ("Pull Image", pull_container),
+                    ("Run Container", run_container),
+                    ("Health Check", health_check)
+                ]      
+
+                for step_name, step_func in steps:
+                    print(f"Starting step: {step_name}")
+                    step_success = step_func()
+                    if not step_success:
+                        print(f"Step: {step_name} failed.")
+                        exit(1)
+                    print(f"Step: {step_name} completed successfully.")
+
+                print("Deployment completed successfully.")
+                exit(0)
+                        
+
+            main()
+            
+            EOF
+            
             
     
