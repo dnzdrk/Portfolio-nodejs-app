@@ -3,8 +3,6 @@ name: Main Push Deployment with tests and docker image build
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
 
 jobs:
@@ -125,10 +123,8 @@ jobs:
                                                 text=True
                                                 )
                 if remove_result.returncode == 0:
-                    print("Container removed successfully.")
                     return True
                 else:
-                    print("Failed to remove the container.")
                     return False
                 
                 
