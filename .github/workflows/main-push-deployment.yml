@@ -65,7 +65,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            python3 << EOF
+            python3 -u << EOF
             import subprocess 
             import time
             import json
