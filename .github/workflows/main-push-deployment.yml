@@ -142,7 +142,7 @@ jobs:
                     return False
                 
             def run_container():
-                run_results = subprocess.run(f"docker run -d -p 4000:4000 --name simple-node-api --memory=512m --cpus=0.5 ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
+                run_results = subprocess.run(f"docker run -d -p 4000:4000 --restart=unless-stopped --name simple-node-api --memory=512m --cpus=0.5 ghcr.io/${{ github.repository_owner }}/simple-nodejs-app:${{ github.sha }}",
                                                     shell=True,
                                                     capture_output=True,
                                                     text=True

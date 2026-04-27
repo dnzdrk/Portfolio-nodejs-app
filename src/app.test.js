@@ -60,8 +60,8 @@ describe('Todo API Tests', () => {
 
   test('POST /todos - should create a new todo', async () => {
     const newTodo = {
-      title: 'Test Todo',
-      description: 'This is a test todo'
+      title: "Test Todo",
+      description: "This is a test todo"
     };
 
     const response = await request(app)
